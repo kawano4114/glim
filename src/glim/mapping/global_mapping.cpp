@@ -1,6 +1,8 @@
 #include <glim/mapping/global_mapping.hpp>
 
+#include <cmath>
 #include <map>
+#include <stdexcept>
 #include <unordered_set>
 #include <spdlog/spdlog.h>
 #include <boost/filesystem.hpp>
@@ -52,6 +54,8 @@ GlobalMappingParams::GlobalMappingParams() {
 
   enable_imu = config.param<bool>("global_mapping", "enable_imu", true);
   enable_optimization = config.param<bool>("global_mapping", "enable_optimization", true);
+  optimization_mode = config.param<int>("global_mapping", "optimization_mode", 1);
+  manual_optimization_max_iterations = config.param<int>("global_mapping", "manual_optimization_max_iterations", 20);
 
   enable_between_factors = config.param<bool>("global_mapping", "create_between_factors", false);
   between_registration_type = config.param<std::string>("global_mapping", "between_registration_type", "GICP");
@@ -80,6 +84,17 @@ GlobalMappingParams::GlobalMappingParams() {
 GlobalMappingParams::~GlobalMappingParams() {}
 
 GlobalMapping::GlobalMapping(const GlobalMappingParams& params) : params(params) {
+  if (this->params.optimization_mode < 1 || this->params.optimization_mode > 3) {
+    throw std::invalid_argument("global_mapping.optimization_mode must be 1, 2, or 3");
+  }
+  if (this->params.manual_optimization_max_iterations < 1) {
+    throw std::invalid_argument("global_mapping.manual_optimization_max_iterations must be positive");
+  }
+  // Keep the legacy optimization switch authoritative when it is disabled.
+  if (!this->params.enable_optimization) {
+    this->params.optimization_mode = 2;
+  }
+  logger->info("global optimization_mode={}", this->params.optimization_mode);
 #ifndef GTSAM_POINTS_USE_CUDA
   if (params.enable_gpu) {
     logger->error("GPU-based factors cannot be used because GLIM is built without GPU option!!");
@@ -100,7 +115,7 @@ GlobalMapping::GlobalMapping(const GlobalMappingParams& params) : params(params)
   isam2_params.relinearizeSkip = params.isam2_relinearize_skip;
   isam2_params.setRelinearizeThreshold(params.isam2_relinearize_thresh);
 
-  if (params.enable_optimization) {
+  if (this->params.optimization_mode == 1) {
     isam2.reset(new gtsam_points::ISAM2Ext(isam2_params));
   } else {
     isam2.reset(new gtsam_points::ISAM2ExtDummy(isam2_params));
@@ -358,6 +373,12 @@ void GlobalMapping::find_overlapping_submaps(double min_overlap) {
 }
 
 void GlobalMapping::optimize() {
+  if (optimization_mode() != 1) {
+    // Saving or an internal update may flush newly imported constraints, but
+    // must never correct poses in disabled/manual mode.
+    store_pending_factors();
+    return;
+  }
   if (isam2->empty()) {
     return;
   }
@@ -374,6 +395,78 @@ void GlobalMapping::optimize() {
 
   update_submaps();
   Callbacks::on_update_submaps(submaps);
+}
+
+void GlobalMapping::store_pending_factors() {
+  // Extension callbacks can supply additional constraints even without a new
+  // submap. Pass only new data so viewers do not register existing edges twice.
+  Callbacks::on_smoother_update(*isam2, *new_factors, *new_values);
+  if (new_factors->empty() && new_values->empty()) {
+    return;
+  }
+
+  const bool inserted_values = !new_values->empty();
+  const auto result = isam2->update(*new_factors, *new_values);
+  new_factors.reset(new gtsam::NonlinearFactorGraph);
+  new_values.reset(new gtsam::Values);
+  Callbacks::on_smoother_update_result(*isam2, result);
+  if (inserted_values && !submaps.empty()) {
+    // Imported sessions may have their initial poses aligned by the extension
+    // callback. Keep exported poses consistent with those stored initial values.
+    update_submaps();
+    Callbacks::on_update_submaps(submaps);
+  }
+}
+
+bool GlobalMapping::optimize_manual() {
+  if (optimization_mode() != 3 || submaps.empty()) {
+    return false;
+  }
+
+  store_pending_factors();
+  const gtsam::NonlinearFactorGraph graph = isam2->getFactorsUnsafe();
+  const gtsam::Values initial_values = isam2->calculateEstimate();
+  if (graph.empty() || initial_values.empty()) {
+    return false;
+  }
+
+  // Optimize the entire accumulated graph (including IMU endpoints, velocities
+  // and biases). A single trigger runs LM to convergence or the iteration cap.
+  // Dummy storage prevents any solver step between explicit requests.
+  gtsam_points::LevenbergMarquardtExtParams lm_params;
+  lm_params.setMaxIterations(params.manual_optimization_max_iterations);
+  gtsam::Values optimized_values;
+  size_t iterations = 0;
+  auto optimize_graph = [&] {
+    gtsam_points::LevenbergMarquardtOptimizerExt optimizer(graph, initial_values, lm_params);
+    optimized_values = optimizer.optimize();
+    iterations = optimizer.iterations();
+    if (!std::isfinite(optimizer.error())) {
+      throw std::runtime_error("manual global optimization returned a non-finite error");
+    }
+  };
+#ifdef GTSAM_USE_TBB
+  auto arena = static_cast<tbb::task_arena*>(tbb_task_arena.get());
+  arena->execute(optimize_graph);
+#else
+  optimize_graph();
+#endif
+
+  // Validate before changing the live graph or poses. If LM throws, the current
+  // map remains intact and the async executor reports failure rather than done.
+  for (size_t i = 0; i < submaps.size(); i++) {
+    if (!optimized_values.at<gtsam::Pose3>(X(i)).matrix().allFinite()) {
+      throw std::runtime_error("manual global optimization returned a non-finite submap pose");
+    }
+  }
+  auto corrected = std::make_unique<gtsam_points::ISAM2ExtDummy>(isam2->params());
+  const auto result = corrected->update(graph, optimized_values);
+  isam2 = std::move(corrected);
+  Callbacks::on_smoother_update_result(*isam2, result);
+  update_submaps();
+  Callbacks::on_update_submaps(submaps);
+  logger->debug("manual global optimization updated {} submaps ({} iterations)", submaps.size(), iterations);
+  return true;
 }
 
 std::shared_ptr<gtsam::NonlinearFactorGraph> GlobalMapping::create_between_factors(int current) const {
@@ -530,7 +623,7 @@ gtsam_points::ISAM2ResultExt GlobalMapping::update_isam2(const gtsam::NonlinearF
     isam2_params.relinearizeSkip = params.isam2_relinearize_skip;
     isam2_params.setRelinearizeThreshold(params.isam2_relinearize_thresh);
 
-    if (params.enable_optimization) {
+    if (optimization_mode() == 1) {
       isam2.reset(new gtsam_points::ISAM2Ext(isam2_params));
     } else {
       isam2.reset(new gtsam_points::ISAM2ExtDummy(isam2_params));
@@ -890,7 +983,7 @@ bool GlobalMapping::load(const std::string& path) {
   }
 
   if (start_from_frame_id <= 0) {
-    logger->info("optimize");
+    logger->info("{} loaded graph", optimization_mode() == 1 ? "optimize" : "store");
     Callbacks::on_smoother_update(*isam2, graph, values);
     auto result = update_isam2(graph, values);
     Callbacks::on_smoother_update_result(*isam2, result);

@@ -6,6 +6,8 @@
     "so_name": "libglobal_mapping.so",
     "enable_imu": true,
     "enable_optimization": true,
+    "optimization_mode": 3, // 1=automatic, 2=no correction, 3=Empty trigger only
+    "manual_optimization_max_iterations": 20,
     "init_pose_damping_scale": 1e10,
     // Relative pose factors
     "create_between_factors": true,

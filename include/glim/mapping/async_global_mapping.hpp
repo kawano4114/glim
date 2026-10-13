@@ -55,6 +55,18 @@ public:
   void insert_submap(const SubMap::Ptr& submap);
 
   /**
+   * @brief Request a one-shot global correction at the next safe processing boundary
+   * @return True if accepted in manual optimization mode (mode 3)
+   * @note Multiple requests before processing are coalesced into one correction
+   */
+  bool request_optimization();
+
+  /**
+   * @brief Get the immutable effective optimization mode without locking the backend
+   */
+  int get_optimization_mode() const { return optimization_mode; }
+
+  /**
    * @brief Wait for the global mapping thread
    */
   void join();
@@ -94,6 +106,7 @@ private:
   ConcurrentVector<SubMap::Ptr> input_submap_queue;
 
   int optimization_interval;
+  const int optimization_mode;
   std::atomic_bool request_to_optimize;
   std::atomic_bool request_to_recover;
   std::atomic<double> request_to_find_overlapping_submaps;

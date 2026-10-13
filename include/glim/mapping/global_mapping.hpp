@@ -32,6 +32,8 @@ public:
   bool enable_gpu;
   bool enable_imu;
   bool enable_optimization;
+  int optimization_mode;
+  int manual_optimization_max_iterations;
   bool enable_between_factors;
   std::string between_registration_type;
 
@@ -67,6 +69,8 @@ public:
 
   virtual void find_overlapping_submaps(double min_overlap) override;
   virtual void optimize() override;
+  virtual int optimization_mode() const override { return params.optimization_mode; }
+  virtual bool optimize_manual() override;
 
   virtual void save(const std::string& path) override;
   virtual gtsam_points::PointCloud::Ptr export_points() override;
@@ -84,6 +88,7 @@ private:
   std::shared_ptr<gtsam::NonlinearFactorGraph> create_matching_cost_factors(int current) const;
 
   void update_submaps();
+  void store_pending_factors();
   gtsam_points::ISAM2ResultExt update_isam2(const gtsam::NonlinearFactorGraph& new_factors, const gtsam::Values& new_values);
 
   void recover_graph() override;

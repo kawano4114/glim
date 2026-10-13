@@ -30,6 +30,7 @@
   // imu_topic              : IMU topic
   // points_topic           : Points topic
   // image_topic            : Image topic (required for only extension modules)
+  // optimize_topic         : std_msgs/msg/Empty trigger (accepted only in optimization_mode=3)
   //
   // --- QoS options ---
   // imu_qos                : QoS options for IMU topic subscription.
@@ -74,6 +75,7 @@
     "imu_topic": "/os_cloud_node/imu",
     "points_topic": "/os_cloud_node/points",
     "image_topic": "/image",
+    "optimize_topic": "/glim_ros/optimize",
     // QoS options
     "imu_qos": {
       "profile": "sensor_data",

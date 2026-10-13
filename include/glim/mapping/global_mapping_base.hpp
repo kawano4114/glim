@@ -57,6 +57,12 @@ public:
    */
   virtual void optimize();
 
+  /** @brief 1: automatic, 2: disabled, 3: explicitly requested correction. */
+  virtual int optimization_mode() const { return 1; }
+
+  /** @brief Perform one manual correction job. False means no result was applied. */
+  virtual bool optimize_manual() { return false; }
+
   /**
    * @brief Request to detect and recover graph corruption
    */

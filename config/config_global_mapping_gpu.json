@@ -2,7 +2,9 @@
   /*** GlobalMapping ***
   // --- General settings ---
   // enable_imu                     : If true, create IMU preintegration factors
-  // enable_optimization            : If false, do not submap optimization (use only odom data)
+  // enable_optimization            : If false, disable global pose correction regardless of optimization_mode
+  // optimization_mode              : 1=standard automatic, 2=no global correction, 3=explicit request only
+  // manual_optimization_max_iterations : Maximum full-graph iterations per manual request (stops early on convergence)
   // init_pose_damping_scale        : Damping scale for initial pose (to fix the gauge freedom)
   //
   // --- Relative pose factors ---
@@ -28,6 +30,8 @@
     // General settings
     "enable_imu": true,
     "enable_optimization": true,
+    "optimization_mode": 3, // 1=automatic, 2=no correction, 3=Empty trigger only
+    "manual_optimization_max_iterations": 20,
     "init_pose_damping_scale": 1e10,
     // Relative pose factors
     "create_between_factors": false,
