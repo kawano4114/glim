@@ -10,6 +10,7 @@
 
 - **acc_scale** (default 1.0) : Linear acceleration scaling factor. Set this to 9.80665 if the unit of IMU linear acceleration is [g] but not [m/s^2] (e.g., Livox LiDARs). 
 - **(imu|points|image)_topics** : Input data topics.
+- **ros_pub_interval_time** (default 20.0 seconds; `glim_ros.ros_pub_interval_time`) : Period for publishing the standard global-map point cloud on `~/map` (`/glim_ros/map` with the default node name). Once completed submaps are available, the RViz extension publishes the latest stored map at this interval regardless of subscriber count. It rebuilds the combined point cloud only when submaps or their poses change; otherwise, it republishes the cached cloud with an updated timestamp. Global correction is reflected in the next scheduled publication. This period is independent of `optimization_mode` (1, 2, or 3); the standard per-frame points, aligned points, TF, odometry, and pose outputs keep their existing behavior. Scheduling uses elapsed wall time, while message timestamps use the ROS node clock.
 
 ## Sensor configuration (config_sensors.json)
 
@@ -59,7 +60,7 @@
 - **optimization_mode** (fallback 1; bundled CPU/GPU configs use 3) : For `libglobal_mapping.so`, 1 preserves automatic iSAM2 correction, 2 accumulates the global map without correction, and 3 corrects only on an explicit request. Keep `enable_global_mapping` and global `enable_optimization` true; the legacy `enable_optimization=false` forces mode 2.
 - **manual_optimization_max_iterations** (default 20) : Mode 3 runs full-graph Levenberg-Marquardt optimization until convergence or this iteration limit, updates all submap poses, and resumes accumulation without further correction. Saving does not trigger correction in modes 2 or 3.
 
-In ROS 2, publish `std_msgs/msg/Empty` on `/glim_ros/optimize` (configurable through `glim_ros.optimize_topic` in `config_ros.json`). Modes 1 and 2 ignore this topic. In mode 3, receipt is logged at INFO, then the global mapping worker processes the request after its current input batch, without waiting for another submap. Only completed submaps present at execution are included. Multiple pending requests are coalesced; a request received during optimization schedules another job. INFO completion means optimized poses were applied and update callbacks were invoked; failure or an empty map produces WARN instead. The RViz extension queues corrected map publication separately.
+In ROS 2, publish `std_msgs/msg/Empty` on `/glim_ros/optimize` (configurable through `glim_ros.optimize_topic` in `config_ros.json`). Modes 1 and 2 ignore this topic. In mode 3, receipt is logged at INFO, then the global mapping worker processes the request after its current input batch, without waiting for another submap. Only completed submaps present at execution are included. Multiple pending requests are coalesced; a request received during optimization schedules another job. INFO completion means optimized poses were applied and update callbacks were invoked; failure or an empty map produces WARN instead. The corrected map point cloud appears on the next publication scheduled by `glim_ros.ros_pub_interval_time`.
 
 ```bash
 ros2 topic pub --once /glim_ros/optimize std_msgs/msg/Empty '{}'
