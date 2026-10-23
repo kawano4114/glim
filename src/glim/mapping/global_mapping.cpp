@@ -190,8 +190,11 @@ void GlobalMapping::insert_submap(const SubMap::Ptr& submap) {
     const gtsam::imuBias::ConstantBias imu_biasL(submap->frames.front()->imu_bias);
     const gtsam::imuBias::ConstantBias imu_biasR(submap->frames.back()->imu_bias);
 
-    const Eigen::Vector3d v_origin_imuL = submap->T_world_origin.linear().inverse() * submap->frames.front()->v_world_imu;
-    const Eigen::Vector3d v_origin_imuR = submap->T_world_origin.linear().inverse() * submap->frames.back()->v_world_imu;
+    // Frame velocities stay in the submap's source world frame even after its
+    // global origin pose changes. Recover their local coordinates from that frame.
+    const Eigen::Matrix3d R_origin_source = submap->origin_frame()->T_world_sensor().linear().transpose();
+    const Eigen::Vector3d v_origin_imuL = R_origin_source * submap->frames.front()->v_world_imu;
+    const Eigen::Vector3d v_origin_imuR = R_origin_source * submap->frames.back()->v_world_imu;
 
     const auto prior_noise3 = gtsam::noiseModel::Isotropic::Precision(3, 1e6);
     const auto prior_noise6 = gtsam::noiseModel::Isotropic::Precision(6, 1e6);
@@ -1073,8 +1076,11 @@ std::pair<gtsam::NonlinearFactorGraph, gtsam::Values> GlobalMapping::recover_gra
     const auto submap = submaps[i];
     const gtsam::imuBias::ConstantBias imu_biasL(submap->frames.front()->imu_bias);
     const gtsam::imuBias::ConstantBias imu_biasR(submap->frames.back()->imu_bias);
-    const Eigen::Vector3d v_origin_imuL = submap->T_world_origin.linear().inverse() * submap->frames.front()->v_world_imu;
-    const Eigen::Vector3d v_origin_imuR = submap->T_world_origin.linear().inverse() * submap->frames.back()->v_world_imu;
+    // Use the original frame rotation, including when recovering a loaded map
+    // whose global origin pose has already been corrected.
+    const Eigen::Matrix3d R_origin_source = submap->origin_frame()->T_world_sensor().linear().transpose();
+    const Eigen::Vector3d v_origin_imuL = R_origin_source * submap->frames.front()->v_world_imu;
+    const Eigen::Vector3d v_origin_imuR = R_origin_source * submap->frames.back()->v_world_imu;
 
     if (i != 0) {
       if (!values.exists(E(i * 2))) {

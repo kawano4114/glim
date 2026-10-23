@@ -1,5 +1,6 @@
 #include <glim/mapping/global_mapping_pose_graph.hpp>
 
+#include <stdexcept>
 #include <spdlog/spdlog.h>
 #include <boost/filesystem.hpp>
 
@@ -37,6 +38,11 @@ using Callbacks = GlobalMappingCallbacks;
 
 GlobalMappingPoseGraphParams::GlobalMappingPoseGraphParams() {
   Config config(GlobalConfig::get_config_path("config_global_mapping"));
+
+  const int optimization_mode = config.param<int>("global_mapping", "optimization_mode", 1);
+  if (optimization_mode != 1) {
+    throw std::invalid_argument("libglobal_mapping_pose_graph.so supports only optimization_mode=1; use libglobal_mapping.so for modes 2 or 3");
+  }
 
   enable_optimization = config.param<bool>("global_mapping", "enable_optimization", true);
   registration_type = config.param<std::string>("global_mapping", "registration_type", "GICP");

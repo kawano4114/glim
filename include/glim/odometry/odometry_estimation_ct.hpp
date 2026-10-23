@@ -5,6 +5,7 @@
 #include <future>
 
 #include <glim/odometry/odometry_estimation_base.hpp>
+#include <glim/util/callback_slot.hpp>
 
 namespace gtsam {
 class Values;
@@ -84,6 +85,7 @@ private:
   std::unique_ptr<FixedLagSmootherExt> smoother;
 
   std::shared_ptr<void> tbb_task_arena;
+  CallbackConnections callback_connections;
 };
 
 }  // namespace glim

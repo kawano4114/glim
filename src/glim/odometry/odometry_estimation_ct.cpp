@@ -74,13 +74,13 @@ OdometryEstimationCT::OdometryEstimationCT(const OdometryEstimationCTParams& par
   tbb_task_arena = std::make_shared<tbb::task_arena>(1);
 #endif
 
-  Callbacks::request_to_compute_covariances.add([this]() {
+  callback_connections.add(Callbacks::request_to_compute_covariances, [this]() {
     logger->debug("request to compute marginal covs");
     this->params.compute_covs = true;
   });
 }
 
-OdometryEstimationCT::~OdometryEstimationCT() {}
+OdometryEstimationCT::~OdometryEstimationCT() { callback_connections.clear(); }
 
 EstimationFrame::ConstPtr OdometryEstimationCT::insert_frame(const PreprocessedFrame::Ptr& raw_frame, std::vector<EstimationFrame::ConstPtr>& marginalized_frames) {
   Callbacks::on_insert_frame(raw_frame);

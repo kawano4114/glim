@@ -112,6 +112,7 @@ StandardViewer::StandardViewer() : logger(create_module_logger("viewer")) {
 }
 
 StandardViewer::~StandardViewer() {
+  callback_connections.clear();
   kill_switch = true;
   if (thread.joinable()) {
     thread.join();

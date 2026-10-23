@@ -4,6 +4,7 @@
 #include <mutex>
 #include <thread>
 #include <glim/mapping/global_mapping.hpp>
+#include <glim/util/callback_slot.hpp>
 #include <glim/util/concurrent_vector.hpp>
 
 namespace spdlog {
@@ -116,6 +117,7 @@ private:
 
   // Logging
   std::shared_ptr<spdlog::logger> logger;
+  CallbackConnections callback_connections;
 };
 
 }  // namespace  glim

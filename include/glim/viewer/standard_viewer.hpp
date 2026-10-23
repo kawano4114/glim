@@ -14,6 +14,7 @@
 
 #include <gtsam_points/util/gtsam_migration.hpp>
 #include <glim/util/extension_module.hpp>
+#include <glim/util/callback_slot.hpp>
 #include <gtsam_points/util/runnning_statistics.hpp>
 
 namespace spdlog {
@@ -129,5 +130,6 @@ private:
 
   // Logging
   std::shared_ptr<spdlog::logger> logger;
+  CallbackConnections callback_connections;
 };
 }  // namespace glim

@@ -5,6 +5,7 @@
 #include <random>
 
 #include <glim/odometry/odometry_estimation_base.hpp>
+#include <glim/util/callback_slot.hpp>
 #include <gtsam/navigation/ImuFactor.h>
 #include <gtsam_points/util/gtsam_migration.hpp>
 #include <gtsam_points/util/indexed_sliding_window.hpp>
@@ -118,6 +119,7 @@ protected:
   std::unique_ptr<FixedLagSmootherExt> smoother;
 
   std::shared_ptr<void> tbb_task_arena;
+  CallbackConnections callback_connections;
 };
 
 }  // namespace glim

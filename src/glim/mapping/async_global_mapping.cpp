@@ -18,19 +18,19 @@ AsyncGlobalMapping::AsyncGlobalMapping(const std::shared_ptr<glim::GlobalMapping
   request_to_recover = false;
   request_to_find_overlapping_submaps.store(-1.0);
 
-  GlobalMappingCallbacks::request_to_optimize.add([this] {
+  callback_connections.add(GlobalMappingCallbacks::request_to_optimize, [this] {
     if (optimization_mode == 1) {
       request_to_optimize = true;
-    } else {
-      request_optimization();
     }
   });
-  GlobalMappingCallbacks::request_to_recover.add([this] {
+  callback_connections.add(GlobalMappingCallbacks::request_to_recover, [this] {
     if (optimization_mode == 1) {
       request_to_recover = true;
     }
   });
-  GlobalMappingCallbacks::request_to_find_overlapping_submaps.add([this](double min_overlap) { request_to_find_overlapping_submaps.store(min_overlap); });
+  callback_connections.add(GlobalMappingCallbacks::request_to_find_overlapping_submaps, [this](double min_overlap) {
+    request_to_find_overlapping_submaps.store(min_overlap);
+  });
 
   kill_switch = false;
   end_of_sequence = false;
@@ -38,6 +38,7 @@ AsyncGlobalMapping::AsyncGlobalMapping(const std::shared_ptr<glim::GlobalMapping
 }
 
 AsyncGlobalMapping::~AsyncGlobalMapping() {
+  callback_connections.clear();
   kill_switch = true;
   join();
 }

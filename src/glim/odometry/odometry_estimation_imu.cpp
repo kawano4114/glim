@@ -125,13 +125,13 @@ OdometryEstimationIMU::OdometryEstimationIMU(std::unique_ptr<OdometryEstimationI
   tbb_task_arena = std::make_shared<tbb::task_arena>(params->num_smoother_update_threads);
 #endif
 
-  Callbacks::request_to_compute_covariances.add([this]() {
+  callback_connections.add(Callbacks::request_to_compute_covariances, [this]() {
     logger->debug("request to compute marginal covs");
     params->compute_covs = true;
   });
 }
 
-OdometryEstimationIMU::~OdometryEstimationIMU() {}
+OdometryEstimationIMU::~OdometryEstimationIMU() { callback_connections.clear(); }
 
 void OdometryEstimationIMU::insert_imu(const double stamp, const Eigen::Vector3d& linear_acc, const Eigen::Vector3d& angular_vel) {
   Callbacks::on_insert_imu(stamp, linear_acc, angular_vel);

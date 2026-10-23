@@ -82,16 +82,17 @@ InteractiveViewer::InteractiveViewer() : logger(create_module_logger("viewer")) 
   using std::placeholders::_2;
   using std::placeholders::_3;
 
-  OdometryEstimationCallbacks::on_new_frame.add(std::bind(&InteractiveViewer::odometry_on_new_frame, this, _1));
-  GlobalMappingCallbacks::on_insert_submap.add(std::bind(&InteractiveViewer::globalmap_on_insert_submap, this, _1));
-  GlobalMappingCallbacks::on_update_submaps.add(std::bind(&InteractiveViewer::globalmap_on_update_submaps, this, _1));
-  GlobalMappingCallbacks::on_smoother_update.add(std::bind(&InteractiveViewer::globalmap_on_smoother_update, this, _1, _2, _3));
-  GlobalMappingCallbacks::on_smoother_update_result.add(std::bind(&InteractiveViewer::globalmap_on_smoother_update_result, this, _1, _2));
+  callback_connections.add(OdometryEstimationCallbacks::on_new_frame, std::bind(&InteractiveViewer::odometry_on_new_frame, this, _1));
+  callback_connections.add(GlobalMappingCallbacks::on_insert_submap, std::bind(&InteractiveViewer::globalmap_on_insert_submap, this, _1));
+  callback_connections.add(GlobalMappingCallbacks::on_update_submaps, std::bind(&InteractiveViewer::globalmap_on_update_submaps, this, _1));
+  callback_connections.add(GlobalMappingCallbacks::on_smoother_update, std::bind(&InteractiveViewer::globalmap_on_smoother_update, this, _1, _2, _3));
+  callback_connections.add(GlobalMappingCallbacks::on_smoother_update_result, std::bind(&InteractiveViewer::globalmap_on_smoother_update_result, this, _1, _2));
 
   thread = std::thread([this] { viewer_loop(); });
 }
 
 InteractiveViewer::~InteractiveViewer() {
+  callback_connections.clear();
   kill_switch = true;
   if (thread.joinable()) {
     thread.join();

@@ -46,7 +46,7 @@ void StandardViewer::set_callbacks() {
   /*** Odometry callbacks ***/
 
   // IMU state initialization update callback
-  IMUStateInitializationCallbacks::on_updated.add([this](const PreprocessedFrame::ConstPtr& frame, const Eigen::Isometry3d& T_odom_lidar_) {
+  callback_connections.add(IMUStateInitializationCallbacks::on_updated, [this](const PreprocessedFrame::ConstPtr& frame, const Eigen::Isometry3d& T_odom_lidar_) {
     std::shared_ptr<Eigen::Isometry3d> T_odom_lidar(new Eigen::Isometry3d(T_odom_lidar_));
     invoke([this, frame, T_odom_lidar] {
       auto viewer = guik::LightViewer::instance();
@@ -57,7 +57,7 @@ void StandardViewer::set_callbacks() {
   });
 
   // IMU state initialization termination callback
-  IMUStateInitializationCallbacks::on_finished.add([this](const EstimationFrame::ConstPtr& frame) {
+  callback_connections.add(IMUStateInitializationCallbacks::on_finished, [this](const EstimationFrame::ConstPtr& frame) {
     invoke([this] {
       auto viewer = guik::LightViewer::instance();
       viewer->remove_drawable(std::regex("initialization.*"));
@@ -66,7 +66,7 @@ void StandardViewer::set_callbacks() {
 
 #ifdef GLIM_USE_OPENCV
   // New image callback
-  OdometryEstimationCallbacks::on_insert_image.add([this](const double stamp, const cv::Mat& image) {
+  callback_connections.add(OdometryEstimationCallbacks::on_insert_image, [this](const double stamp, const cv::Mat& image) {
     invoke([this, image] {
       auto viewer = guik::LightViewer::instance();
       const auto texture = glk::create_texture(image);
@@ -76,7 +76,7 @@ void StandardViewer::set_callbacks() {
 #endif
 
   // New frame callback
-  OdometryEstimationCallbacks::on_new_frame.add([this](const EstimationFrame::ConstPtr& new_frame) {
+  callback_connections.add(OdometryEstimationCallbacks::on_new_frame, [this](const EstimationFrame::ConstPtr& new_frame) {
     invoke([this, new_frame] {
       auto viewer = guik::LightViewer::instance();
       auto cloud_buffer = std::make_shared<glk::PointCloudBuffer>(new_frame->frame->points, new_frame->frame->size());
@@ -156,7 +156,7 @@ void StandardViewer::set_callbacks() {
   });
 
   // Update frames callback
-  OdometryEstimationCallbacks::on_update_frames.add([this](const std::vector<EstimationFrame::ConstPtr>& frames) {
+  callback_connections.add(OdometryEstimationCallbacks::on_update_frames, [this](const std::vector<EstimationFrame::ConstPtr>& frames) {
     invoke([this, frames] {
       auto viewer = guik::LightViewer::instance();
       for (const auto& frame : frames) {
@@ -176,7 +176,7 @@ void StandardViewer::set_callbacks() {
   });
 
   // Update keyframes callback
-  OdometryEstimationCallbacks::on_update_keyframes.add([this](const std::vector<EstimationFrame::ConstPtr>& keyframes) {
+  callback_connections.add(OdometryEstimationCallbacks::on_update_keyframes, [this](const std::vector<EstimationFrame::ConstPtr>& keyframes) {
     invoke([this, keyframes] {
       auto viewer = guik::LightViewer::instance();
 
@@ -237,7 +237,7 @@ void StandardViewer::set_callbacks() {
     });
   });
 
-  OdometryEstimationCallbacks::on_smoother_update.add([this](
+  callback_connections.add(OdometryEstimationCallbacks::on_smoother_update, [this](
                                                         gtsam_points::IncrementalFixedLagSmootherExtWithFallback& smoother,
                                                         gtsam::NonlinearFactorGraph& new_factors,
                                                         gtsam::Values& new_values,
@@ -357,7 +357,7 @@ void StandardViewer::set_callbacks() {
   });
 
   // Marginalized frames callback
-  OdometryEstimationCallbacks::on_marginalized_frames.add([this](const std::vector<EstimationFrame::ConstPtr>& frames) {
+  callback_connections.add(OdometryEstimationCallbacks::on_marginalized_frames, [this](const std::vector<EstimationFrame::ConstPtr>& frames) {
     std::vector<int> marginalized_ids(frames.size());
     std::transform(frames.begin(), frames.end(), marginalized_ids.begin(), [](const EstimationFrame::ConstPtr& frame) { return frame->id; });
 
@@ -378,7 +378,7 @@ void StandardViewer::set_callbacks() {
   });
 
   // Marginalized keyframes callback
-  OdometryEstimationCallbacks::on_marginalized_keyframes.add([this](const std::vector<EstimationFrame::ConstPtr>& keyframes) {
+  callback_connections.add(OdometryEstimationCallbacks::on_marginalized_keyframes, [this](const std::vector<EstimationFrame::ConstPtr>& keyframes) {
     invoke([this, keyframes] {
       auto viewer = guik::LightViewer::instance();
       for (const auto& keyframe : keyframes) {
@@ -391,7 +391,7 @@ void StandardViewer::set_callbacks() {
 
   /*** Submapping callbacks ***/
   // New keyframe callback
-  SubMappingCallbacks::on_new_keyframe.add([this](int id, const EstimationFrame::ConstPtr& keyframe) {
+  callback_connections.add(SubMappingCallbacks::on_new_keyframe, [this](int id, const EstimationFrame::ConstPtr& keyframe) {
     gtsam_points::PointCloud::ConstPtr frame = keyframe->frame;
 
     invoke([this, id, keyframe, frame] {
@@ -444,7 +444,7 @@ void StandardViewer::set_callbacks() {
   });
 
   // Submap optimization callback
-  SubMappingCallbacks::on_optimize_submap.add([this](gtsam::NonlinearFactorGraph& graph, gtsam::Values& values) {
+  callback_connections.add(SubMappingCallbacks::on_optimize_submap, [this](gtsam::NonlinearFactorGraph& graph, gtsam::Values& values) {
     std::vector<std::pair<int, int>> factors;
     for (const auto& factor : graph) {
       if (factor->keys().size() != 2) {
@@ -480,14 +480,14 @@ void StandardViewer::set_callbacks() {
   });
 
   // Submap optimization status callback
-  SubMappingCallbacks::on_optimization_status.add([this](const gtsam_points::LevenbergMarquardtOptimizationStatus& status, const gtsam::Values& values) {
+  callback_connections.add(SubMappingCallbacks::on_optimization_status, [this](const gtsam_points::LevenbergMarquardtOptimizationStatus& status, const gtsam::Values& values) {
     logger->debug("--- submap optimization ---");
     logger->debug(status.to_short_string());
   });
 
   /*** Global mapping callbacks ***/
   // Insert submap callback
-  GlobalMappingCallbacks::on_insert_submap.add([this](const SubMap::ConstPtr& submap) {
+  callback_connections.add(GlobalMappingCallbacks::on_insert_submap, [this](const SubMap::ConstPtr& submap) {
     // submap->T_world_origin can be updated in the global mapping
     // To safely pass it to the UI thread (pass-by-value of Eigen classes can crash) wrap it in a shared_ptr
     const std::shared_ptr<Eigen::Isometry3d> T_world_origin(new Eigen::Isometry3d(submap->T_world_origin));
@@ -533,7 +533,7 @@ void StandardViewer::set_callbacks() {
   });
 
   // Update submaps callback
-  GlobalMappingCallbacks::on_update_submaps.add([this](const std::vector<SubMap::Ptr>& submaps) {
+  callback_connections.add(GlobalMappingCallbacks::on_update_submaps, [this](const std::vector<SubMap::Ptr>& submaps) {
     const SubMap::ConstPtr latest_submap = submaps.back();
 
     std::vector<int> submap_ids(submaps.size());
@@ -595,7 +595,7 @@ void StandardViewer::set_callbacks() {
   });
 
   // Smoother update callback
-  GlobalMappingCallbacks::on_smoother_update.add([this](gtsam_points::ISAM2Ext& isam2, gtsam::NonlinearFactorGraph& new_factors, gtsam::Values& new_values) {
+  callback_connections.add(GlobalMappingCallbacks::on_smoother_update, [this](gtsam_points::ISAM2Ext& isam2, gtsam::NonlinearFactorGraph& new_factors, gtsam::Values& new_values) {
     std::vector<std::pair<int, int>> between_factors;
     for (const auto& factor : new_factors) {
       if (factor->keys().size() != 2) {
@@ -615,7 +615,7 @@ void StandardViewer::set_callbacks() {
   });
 
   // Smoother update result callback
-  GlobalMappingCallbacks::on_smoother_update_result.add([this](gtsam_points::ISAM2Ext& isam2, const gtsam_points::ISAM2ResultExt& result) {
+  callback_connections.add(GlobalMappingCallbacks::on_smoother_update_result, [this](gtsam_points::ISAM2Ext& isam2, const gtsam_points::ISAM2ResultExt& result) {
     logger->debug("--- iSAM2 update ({} values / {} factors) ---", result.num_values, result.num_factors);
     logger->debug(result.to_string());
 

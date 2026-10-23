@@ -102,6 +102,7 @@ GLIM offers a mechanism to load extension modules from shared libraries at run-t
 
 ```cpp title="my_extension_module.cpp"
 #include <glim/odometry/callbacks.hpp>
+#include <glim/util/callback_slot.hpp>
 #include <glim/util/extension_module.hpp>
 
 using namespace glim;
@@ -110,18 +111,25 @@ class MyExtensionModule : public ExtensionModule {
 public:
   MyExtensionModule() {
     using std::placeholders::_1;
-    OdometryEstimationCallbacks::on_new_frame.add(std::bind(&MyExtensionModule::on_new_frame, this, _1));
+    connections.add(OdometryEstimationCallbacks::on_new_frame, std::bind(&MyExtensionModule::on_new_frame, this, _1));
   }
+
+  ~MyExtensionModule() override { connections.clear(); }
 
   void on_new_frame(const EstimationFrame::ConstPtr& frame) {
     // ...
   }
+
+private:
+  CallbackConnections connections;
 };
 
 extern "C" ExtensionModule* create_extension_module() {
   return new MyExtensionModule();
 }
 ```
+
+`CallbackConnections::clear()` disables these registrations and waits for in-flight callbacks before returning. Call it before destroying fields or stopping consumers used by the callbacks. The owner and the callback slots must remain alive until disconnection has completed.
 
 
 ```cmake title="CMakeLists.txt"
