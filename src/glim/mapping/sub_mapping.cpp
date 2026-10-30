@@ -1,6 +1,8 @@
 #include <glim/mapping/sub_mapping.hpp>
 
+#include <cmath>
 #include <filesystem>
+#include <stdexcept>
 #include <spdlog/spdlog.h>
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/slam/BetweenFactor.h>
@@ -64,6 +66,34 @@ SubMappingParams::SubMappingParams() {
   submap_downsample_resolution = config.param<double>("sub_mapping", "submap_downsample_resolution", 0.25);
   submap_voxel_resolution = config.param<double>("sub_mapping", "submap_voxel_resolution", 0.5);
   submap_target_num_points = config.param<int>("sub_mapping", "submap_target_num_points", -1);
+
+  enable_height_filter = config.param<bool>("sub_mapping", "enable_height_filter", false);
+  height_min = config.param<double>("sub_mapping", "height_min", -0.5);
+  height_max = config.param<double>("sub_mapping", "height_max", 1.5);
+  T_lidar_base = Eigen::Isometry3d::Identity();
+  if (enable_height_filter) {
+    if (!std::isfinite(height_min) || !std::isfinite(height_max) || height_min > height_max) {
+      throw std::runtime_error("Invalid submap height range: require finite height_min <= height_max");
+    }
+    Config sensor_config(GlobalConfig::get_config_path("config_sensors"));
+    const auto base_transform = sensor_config.param<std::vector<double>>("sensors", "T_lidar_base");
+    if (!base_transform || base_transform->size() != 7) {
+      throw std::runtime_error("Submap height filter requires sensors.T_lidar_base: [x, y, z, qx, qy, qz, qw]");
+    }
+    for (const double value : *base_transform) {
+      if (!std::isfinite(value)) {
+        throw std::runtime_error("Non-finite sensors.T_lidar_base");
+      }
+    }
+    const Eigen::Quaterniond rotation(base_transform->data() + 3);
+    if (!std::isfinite(rotation.norm()) || rotation.norm() == 0.0) {
+      throw std::runtime_error("Invalid quaternion in sensors.T_lidar_base");
+    }
+    T_lidar_base = sensor_config.param<Eigen::Isometry3d>("sensors", "T_lidar_base", Eigen::Isometry3d::Identity());
+    if (!T_lidar_base.matrix().allFinite()) {
+      throw std::runtime_error("Non-finite sensors.T_lidar_base");
+    }
+  }
 
   enable_gpu = false;
   if (registration_error_factor_type.find("GPU") != std::string::npos) {
@@ -324,9 +354,14 @@ void SubMapping::insert_frame(const EstimationFrame::ConstPtr& odom_frame_) {
   auto new_submap = create_submap();
 
   if (new_submap) {
-    new_submap->id = submap_count++;
-    submap_queue.push_back(new_submap);
-    Callbacks::on_new_submap(new_submap);
+    if (params.enable_height_filter && new_submap->frame->size() == 0) {
+      logger->warn(
+        "height filter removed all submap points; skipping submap (height_min={} height_max={})", params.height_min, params.height_max);
+    } else {
+      new_submap->id = submap_count++;
+      submap_queue.push_back(new_submap);
+      Callbacks::on_new_submap(new_submap);
+    }
 
     odom_frames.clear();
     keyframes.clear();
@@ -478,11 +513,33 @@ SubMap::Ptr SubMapping::create_submap(bool force_create) const {
   }
 
   logger->debug("merge frames");
-  std::vector<gtsam_points::PointCloud::ConstPtr> keyframes_to_merge(keyframes.size());
-  std::vector<Eigen::Isometry3d> poses_to_merge(keyframes.size());
+  std::vector<gtsam_points::PointCloud::ConstPtr> keyframes_to_merge;
+  std::vector<Eigen::Isometry3d> poses_to_merge;
+  keyframes_to_merge.reserve(keyframes.size());
+  poses_to_merge.reserve(keyframes.size());
   for (int i = 0; i < keyframes.size(); i++) {
-    keyframes_to_merge[i] = keyframes[i]->frame;
-    poses_to_merge[i] = submap->T_world_origin.inverse() * Eigen::Isometry3d(values->at<gtsam::Pose3>(X(keyframe_indices[i])).matrix());
+    const auto& optimized_frame = submap->frames[keyframe_indices[i]];
+    const Eigen::Isometry3d T_world_sensor = optimized_frame->T_world_sensor();
+    gtsam_points::PointCloud::ConstPtr points = keyframes[i]->frame;
+    if (params.enable_height_filter) {
+      // World +Z is gravity-aligned. Only the height test uses world coordinates;
+      // keep the selected points and their attributes in the original sensor frame.
+      const Eigen::Vector3d base_world = (optimized_frame->T_world_lidar * params.T_lidar_base).translation();
+      points = gtsam_points::filter(points, [&](const Eigen::Vector4d& point) {
+        const double height = (T_world_sensor * point).z() - base_world.z();
+        return std::isfinite(height) && height >= params.height_min && height <= params.height_max;
+      });
+      if (points->size() == 0) {
+        continue;
+      }
+    }
+    keyframes_to_merge.push_back(points);
+    poses_to_merge.push_back(submap->T_world_origin.inverse() * T_world_sensor);
+  }
+
+  if (params.enable_height_filter && keyframes_to_merge.empty()) {
+    submap->frame = std::make_shared<gtsam_points::PointCloudCPU>();
+    return submap;
   }
 
   // TODO: improve merging process
@@ -512,8 +569,12 @@ std::vector<SubMap::Ptr> SubMapping::submit_end_of_sequence() {
     auto new_submap = create_submap(true);
 
     if (new_submap) {
-      new_submap->id = submap_count++;
-      submaps.push_back(new_submap);
+      if (params.enable_height_filter && new_submap->frame->size() == 0) {
+        logger->warn("height filter removed all final submap points; skipping submap");
+      } else {
+        new_submap->id = submap_count++;
+        submaps.push_back(new_submap);
+      }
     }
   }
 
