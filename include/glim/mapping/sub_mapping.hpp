@@ -49,11 +49,6 @@ public:
   double submap_downsample_resolution;
   double submap_voxel_resolution;
   int submap_target_num_points;
-
-  bool enable_height_filter;
-  double height_min;
-  double height_max;
-  Eigen::Isometry3d T_lidar_base;
 };
 
 /**

@@ -23,13 +23,6 @@
     "keyframe_voxelmap_levels": 2,
     "keyframe_voxelmap_scaling_factor": 2.0,
     // Post processing
-    // Height in gravity-aligned world +Z relative to each scan base origin [m].
-    // Requires sensors.T_lidar_base; applied only when merging the final submap.
-    // Inclusive limits; world +Z must be gravity-aligned. Empty submaps are skipped.
-    // Uses optimized poses when enable_optimization=true, otherwise odometry poses.
-    "enable_height_filter": false,
-    "height_min": -0.5,
-    "height_max": 1.5,
     "submap_downsample_resolution": 0.3,
     "submap_voxel_resolution": 0.5
   }
